@@ -2,22 +2,24 @@ pipeline {
   agent any
 
   environment {
-    APP_DIR = "/host_home/ubuntu/nodeapi"
-    APP_NAME = "nodeapi-app"
+    APP_DIR = "/var/www/nodeapi"
+    APP_NAME = "nodeapi"
   }
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     stage('Deploy files') {
       steps {
         sh '''
           set -eux
-          mkdir -p "${APP_DIR}"
-          rm -rf "${APP_DIR:?}/"*
-          cp -r ./* "${APP_DIR}/"
+          mkdir -p "$APP_DIR"
+          rm -rf "$APP_DIR"/*
+          cp -r ./* "$APP_DIR"/
         '''
       }
     }
@@ -25,28 +27,23 @@ pipeline {
     stage('Install deps') {
       steps {
         sh '''
-          docker run --rm \
-            -v "${APP_DIR}:/app" \
-            -w /app \
-            node:20-bullseye \
-            npm install
+          set -eux
+          cd "$APP_DIR"
+          npm install
         '''
       }
     }
 
-    stage('Run API') {
+    stage('Restart App') {
       steps {
         sh '''
-          docker rm -f ${APP_NAME} || true
-
-          docker run -d --name ${APP_NAME} \
-            -p 3000:3000 \
-            -v "${APP_DIR}:/app" \
-            -w /app \
-            node:20-bullseye \
-            node index.js
-
-          docker ps | grep ${APP_NAME}
+          set -eux
+          export PM2_HOME=/var/lib/jenkins/.pm2
+          cd "$APP_DIR"
+          pm2 delete "$APP_NAME" || true
+          pm2 start index.js --name "$APP_NAME"
+          pm2 save
+          pm2 status
         '''
       }
     }
